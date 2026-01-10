@@ -7,7 +7,7 @@ import os
 
 # ================== CONFIG ==================
 TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ ตั้งค่าใน Render environment variable
-ATTENDANCE_CHANNEL_ID = 1458496060543733928  # ห้องที่บอททำงานได้
+ATTENDANCE_CHANNEL_ID = 1459577266194612224  # ห้องที่บอททำงานได้
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # role ที่สามารถใช้ซ้ำได้
 # ============================================
