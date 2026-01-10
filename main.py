@@ -6,37 +6,38 @@ import asyncio
 import os
 
 # ================== CONFIG ==================
-TOKEN = os.getenv("DISCORD_TOKEN")  # ตั้งค่าใน Render environment variable
-ATTENDANCE_CHANNEL_ID = 1458496060543733928  # ห้องที่บอททำงาน
+TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ ตั้งค่าใน Render environment variable
+ATTENDANCE_CHANNEL_ID = 1458496060543733928  # ห้องที่บอททำงานได้
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
-ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # role ที่สามารถเช็คชื่อซ้ำได้
+ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # role ที่สามารถใช้ซ้ำได้
 # ============================================
 
 if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN not found in environment variables")
 
-# ================== GLOBAL ==================
-checked_in_users = set()  # เก็บ user.id ของคนที่เช็คชื่อแล้ว
-
-# ================== BOT ==================
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True  # ต้องเปิดถ้าใช้ interaction.user.roles
+
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# เก็บ user ที่เช็คชื่อแล้ววันนี้
+checked_in_users = set()
 
 # ================== MODAL ==================
 class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     note = discord.ui.TextInput(
         label="หมายเหตุ",
-        placeholder="ชื่อภายในเกม / ใช้เพื่อยืนยันตัวตน",
+        placeholder="ชื่อในเกม / ใช้ยืนยันตัวตน",
         required=False,
         max_length=100
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # ตรวจสอบ role ก่อนจำกัดเช็คชื่อซ้ำ
         member_roles = [role.id for role in interaction.user.roles]
         allowed = any(role_id in ALLOWED_ROLE_IDS for role_id in member_roles)
 
+        # ถ้าไม่ใช่ role พิเศษและเช็คชื่อแล้ว
         if not allowed and interaction.user.id in checked_in_users:
             await interaction.response.send_message(
                 "❌ คุณได้เช็คชื่อแล้ววันนี้", ephemeral=True
@@ -44,7 +45,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             return
 
         await interaction.response.send_message(
-            "📸 กรุณาส่งรูปเล่นกับคนในกิลภายในเกม เพื่อยืนยันภายใน 60 วินาที",
+            "📸 กรุณาส่งรูปเล่นกับคนในกิลเพื่อยืนยันภายใน 60 วินาที",
             ephemeral=True
         )
 
@@ -80,10 +81,8 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         embed.set_image(url=msg.attachments[0].url)
 
         await log_channel.send(embed=embed)
-
         if not allowed:
             checked_in_users.add(interaction.user.id)
-
         await interaction.followup.send("✅ เช็คชื่อสำเร็จแล้ว", ephemeral=True)
 
 # ================== VIEW / BUTTON ==================
@@ -99,7 +98,6 @@ class CheckinView(discord.ui.View):
             return
 
         display_name = interaction.user.display_name
-
         if REQUIRED_TEXT not in display_name:
             await interaction.response.send_message(
                 f"❌ กรุณาตั้งชื่อให้มีคำว่า `{REQUIRED_TEXT}` ก่อนเช็คชื่อ\n"
@@ -129,8 +127,12 @@ async def gmb(interaction: discord.Interaction):
 # ================== READY ==================
 @bot.event
 async def on_ready():
+    # ลบ command เก่า
+    for cmd in await bot.tree.fetch_commands():
+        await bot.tree.delete_command(cmd.name)
+    # Sync command ใหม่
     await bot.tree.sync()
-    print(f"Bot ready as {bot.user}")
+    print(f"Bot ready as {bot.user} and commands synced!")
 
 # ================== KEEP ALIVE ==================
 bot.run(TOKEN)
