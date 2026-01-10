@@ -81,15 +81,17 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         embed.set_image(url=msg.attachments[0].url)
 
         await log_channel.send(embed=embed)
+
+        # ✅ เพิ่มผู้ใช้ลง checked_in_users เฉพาะคนไม่มี role พิเศษ
         if not allowed:
             checked_in_users.add(interaction.user.id)
+
         await interaction.followup.send("✅ เช็คชื่อสำเร็จแล้ว", ephemeral=True)
 
 # ================== VIEW / BUTTON ==================
 class CheckinView(discord.ui.View):
     @discord.ui.button(label="เช็คชื่อ", style=discord.ButtonStyle.success)
     async def checkin(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ใช้เฉพาะห้องที่กำหนด
         if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
             await interaction.response.send_message(
                 f"❌ คำสั่งนี้ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}> เท่านั้น",
@@ -111,7 +113,6 @@ class CheckinView(discord.ui.View):
 # ================== SLASH COMMAND ==================
 @bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
 async def gmb(interaction: discord.Interaction):
-    # ใช้เฉพาะห้องที่กำหนด
     if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
         await interaction.response.send_message(
             f"❌ คำสั่งนี้ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}> เท่านั้น",
@@ -127,9 +128,10 @@ async def gmb(interaction: discord.Interaction):
 # ================== READY ==================
 @bot.event
 async def on_ready():
-    # ลบ command เก่า
+    # ลบ command เก่า /attendance
     for cmd in await bot.tree.fetch_commands():
-        await bot.tree.delete_command(cmd.name)
+        if cmd.name != "gmb":
+            await bot.tree.delete_command(cmd.name)
     # Sync command ใหม่
     await bot.tree.sync()
     print(f"Bot ready as {bot.user} and commands synced!")
