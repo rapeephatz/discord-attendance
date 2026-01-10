@@ -19,6 +19,9 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ================== GLOBAL ==================
+checked_today = set()  # เก็บ (user_id, date) ของคนที่เช็คชื่อแล้ว
+
 # ================== MODAL ==================
 class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     note = discord.ui.TextInput(
@@ -29,6 +32,16 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # ✅ เช็คว่าผู้ใช้เช็คแล้ววันนี้หรือยัง
+        if (interaction.user.id, today) in checked_today:
+            await interaction.response.send_message(
+                "❌ คุณได้เช็คชื่อวันนี้ไปแล้ว",
+                ephemeral=True
+            )
+            return
+
         await interaction.response.send_message(
             "📸 กรุณาส่งรูปเล่นกับคนในกิลภายในเกม เพื่อยืนยันภายใน 60 วินาที",
             ephemeral=True
@@ -47,9 +60,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             await interaction.followup.send("❌ หมดเวลา กรุณาลองใหม่", ephemeral=True)
             return
 
-        today = datetime.now().strftime("%Y-%m-%d")
         now = datetime.now().strftime("%H:%M:%S")
-
         log_channel = bot.get_channel(ATTENDANCE_CHANNEL_ID)
         if log_channel is None:
             await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
@@ -67,6 +78,9 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 
         await log_channel.send(embed=embed)
         await interaction.followup.send("✅ เช็คชื่อสำเร็จแล้ว", ephemeral=True)
+
+        # ✅ เพิ่มผู้ใช้ลงใน set เพื่อกันเช็คซ้ำ
+        checked_today.add((interaction.user.id, today))
 
 # ================== VIEW / BUTTON ==================
 class CheckinView(discord.ui.View):
