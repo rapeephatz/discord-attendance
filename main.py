@@ -7,7 +7,8 @@ import os
 
 # ================== CONFIG ==================
 TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ ตั้งค่าใน Render environment variable
-ATTENDANCE_CHANNEL_ID = 1459577266194612224  # ห้องที่บอททำงานได้
+ATTENDANCE_CHANNEL_ID = 1458496060543733928  # ห้องที่บอททำงานได้
+ATTENDANCE_LOG_CHANNEL_ID = 1459577266194612224  # ห้องเก็บหลักฐาน
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # role ที่สามารถใช้ซ้ำได้
 # ============================================
@@ -65,7 +66,8 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         today = datetime.now().strftime("%Y-%m-%d")
         now = datetime.now().strftime("%H:%M:%S")
 
-        log_channel = bot.get_channel(ATTENDANCE_CHANNEL_ID)
+        # ✅ ส่งหลักฐานไปห้องเก็บหลักฐาน
+        log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
         if log_channel is None:
             await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
             return
@@ -82,7 +84,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 
         await log_channel.send(embed=embed)
 
-        # ✅ เพิ่มผู้ใช้ลง checked_in_users เฉพาะคนไม่มี role พิเศษ
+        # เพิ่มผู้ใช้ลง checked_in_users เฉพาะคนไม่มี role พิเศษ
         if not allowed:
             checked_in_users.add(interaction.user.id)
 
