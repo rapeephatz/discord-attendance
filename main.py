@@ -6,7 +6,7 @@ import asyncio
 import os
 
 # ================== CONFIG ==================
-TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ ตั้งค่าใน Render environment variable
+TOKEN = os.getenv("DISCORD_TOKEN")  # ตั้งค่าใน Render environment variable
 ATTENDANCE_CHANNEL_ID = 1458496060543733928  # ห้องที่บอทจะทำงานได้
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 # ============================================
@@ -19,8 +19,8 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ================== GLOBAL ==================
-checked_today = set()  # เก็บ (user_id, date) ของคนที่เช็คชื่อแล้ว
+# เก็บ user ที่เช็คชื่อแล้ว
+checked_in_users = set()
 
 # ================== MODAL ==================
 class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
@@ -32,13 +32,9 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        # ✅ เช็คว่าผู้ใช้เช็คแล้ววันนี้หรือยัง
-        if (interaction.user.id, today) in checked_today:
+        if interaction.user.id in checked_in_users:
             await interaction.response.send_message(
-                "❌ คุณได้เช็คชื่อวันนี้ไปแล้ว",
-                ephemeral=True
+                "❌ คุณได้เช็คชื่อแล้ววันนี้", ephemeral=True
             )
             return
 
@@ -60,7 +56,9 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             await interaction.followup.send("❌ หมดเวลา กรุณาลองใหม่", ephemeral=True)
             return
 
+        today = datetime.now().strftime("%Y-%m-%d")
         now = datetime.now().strftime("%H:%M:%S")
+
         log_channel = bot.get_channel(ATTENDANCE_CHANNEL_ID)
         if log_channel is None:
             await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
@@ -77,20 +75,14 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         embed.set_image(url=msg.attachments[0].url)
 
         await log_channel.send(embed=embed)
+        checked_in_users.add(interaction.user.id)
         await interaction.followup.send("✅ เช็คชื่อสำเร็จแล้ว", ephemeral=True)
-
-        # ✅ เพิ่มผู้ใช้ลงใน set เพื่อกันเช็คซ้ำ
-        checked_today.add((interaction.user.id, today))
 
 # ================== VIEW / BUTTON ==================
 class CheckinView(discord.ui.View):
     @discord.ui.button(label="เช็คชื่อ", style=discord.ButtonStyle.success)
-    async def checkin(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        # ✅ ใช้เฉพาะห้องที่กำหนด
+    async def checkin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ใช้เฉพาะห้องที่กำหนด
         if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
             await interaction.response.send_message(
                 f"❌ คำสั่งนี้ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}> เท่านั้น",
@@ -99,7 +91,6 @@ class CheckinView(discord.ui.View):
             return
 
         display_name = interaction.user.display_name
-
         if REQUIRED_TEXT not in display_name:
             await interaction.response.send_message(
                 f"❌ กรุณาตั้งชื่อให้มีคำว่า `{REQUIRED_TEXT}` ก่อนเช็คชื่อ\n"
@@ -113,7 +104,7 @@ class CheckinView(discord.ui.View):
 # ================== SLASH COMMAND ==================
 @bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
 async def gmb(interaction: discord.Interaction):
-    # ✅ ใช้เฉพาะห้องที่กำหนด
+    # ใช้เฉพาะห้องที่กำหนด
     if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
         await interaction.response.send_message(
             f"❌ คำสั่งนี้ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}> เท่านั้น",
@@ -129,6 +120,7 @@ async def gmb(interaction: discord.Interaction):
 # ================== READY ==================
 @bot.event
 async def on_ready():
+    # ล้างคำสั่งเก่าแล้ว sync ใหม่
     await bot.tree.sync()
     print(f"Bot ready as {bot.user}")
 
