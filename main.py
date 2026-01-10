@@ -7,7 +7,7 @@ import os
 
 # ================== CONFIG ==================
 TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ ตั้งค่าใน Render environment variable
-ATTENDANCE_CHANNEL_ID = 1459527982845526200  # ห้องเก็บหลักฐาน
+ATTENDANCE_CHANNEL_ID = 1458496060543733928  # ห้องที่บอทจะทำงานได้
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 # ============================================
 
@@ -76,6 +76,14 @@ class CheckinView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
+        # ✅ ใช้เฉพาะห้องที่กำหนด
+        if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
+            await interaction.response.send_message(
+                f"❌ คำสั่งนี้ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}> เท่านั้น",
+                ephemeral=True
+            )
+            return
+
         display_name = interaction.user.display_name
 
         if REQUIRED_TEXT not in display_name:
@@ -89,8 +97,16 @@ class CheckinView(discord.ui.View):
         await interaction.response.send_modal(CheckinModal())
 
 # ================== SLASH COMMAND ==================
-@bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")  # ✅ เปลี่ยนเป็น /gmb
+@bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
 async def gmb(interaction: discord.Interaction):
+    # ✅ ใช้เฉพาะห้องที่กำหนด
+    if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
+        await interaction.response.send_message(
+            f"❌ คำสั่งนี้ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}> เท่านั้น",
+            ephemeral=True
+        )
+        return
+
     await interaction.response.send_message(
         "📌 กดปุ่มด้านล่างเพื่อเช็คชื่อ",
         view=CheckinView()
