@@ -4,6 +4,8 @@ from discord import app_commands
 from datetime import datetime, timedelta
 import asyncio
 import os
+import threading
+from flask import Flask
 
 # ================== CONFIG ==================
 TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ ตั้งค่าใน Render environment variable
@@ -12,7 +14,7 @@ ATTENDANCE_LOG_CHANNEL_ID = 1459577266194612224  # ห้องเก็บห�
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # role ที่สามารถใช้ซ้ำได้
 RESET_WEEKDAY = 0  # 0 = Monday
-RESET_HOUR = 5     # เวลา 05:00
+RESET_HOUR = 5     # เวลา 05:00 น.
 # ============================================
 
 if not TOKEN:
@@ -24,11 +26,24 @@ intents.members = True  # ต้องเปิดถ้าใช้ interaction
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# เก็บ user ที่เช็คชื่อแล้วในสัปดาห์
-checked_in_users = set()
+# ================== KEEP TRACK ==================
+checked_in_users = set()  # เก็บ user ที่เช็คชื่อแล้วในสัปดาห์นี้
 
-# ================== รีเซ็ตเช็คชื่อรายสัปดาห์ ==================
+# ================== FLASK KEEP ALIVE ==================
+app = Flask("")
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=5000)
+
+threading.Thread(target=run_flask).start()
+
+# ================== RESET CHECK-IN WEEKLY ==================
 async def reset_checked_in_users_weekly():
+    await bot.wait_until_ready()
     while True:
         now = datetime.now()
         # หาวันจันทร์ถัดไปเวลา 05:00
@@ -39,7 +54,6 @@ async def reset_checked_in_users_weekly():
         wait_seconds = (next_reset - now).total_seconds()
         await asyncio.sleep(wait_seconds)
         checked_in_users.clear()
-        # ส่งข้อความแจ้งในห้องเก็บหลักฐาน
         log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
         if log_channel:
             await log_channel.send("🔔 เริ่มสัปดาห์ใหม่ สามารถเช็คชื่อได้อีกครั้ง!")
@@ -58,6 +72,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         member_roles = [role.id for role in interaction.user.roles]
         allowed = any(role_id in ALLOWED_ROLE_IDS for role_id in member_roles)
 
+        # คนปกติไม่สามารถเช็คชื่อซ้ำในสัปดาห์ได้
         if not allowed and interaction.user.id in checked_in_users:
             await interaction.response.send_message(
                 "❌ คุณได้เช็คชื่อแล้วในสัปดาห์นี้", ephemeral=True
@@ -86,7 +101,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         now = datetime.now().strftime("%H:%M:%S")
 
         log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
-        if log_channel is None:
+        if not log_channel:
             await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
             return
 
@@ -102,6 +117,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 
         await log_channel.send(embed=embed)
 
+        # เพิ่มคนปกติลง checked_in_users
         if not allowed:
             checked_in_users.add(interaction.user.id)
 
@@ -118,8 +134,7 @@ class CheckinView(discord.ui.View):
             )
             return
 
-        display_name = interaction.user.display_name
-        if REQUIRED_TEXT not in display_name:
+        if REQUIRED_TEXT not in interaction.user.display_name:
             await interaction.response.send_message(
                 f"❌ กรุณาตั้งชื่อให้มีคำว่า `{REQUIRED_TEXT}` ก่อนเช็คชื่อ\n"
                 f"ตัวอย่าง: `001 ˚₊‧ ɢᴍʙ ‧₊˚ BANANA`",
@@ -147,15 +162,15 @@ async def gmb(interaction: discord.Interaction):
 # ================== READY ==================
 @bot.event
 async def on_ready():
-    # ลบ command เก่า /attendance
+    # ลบ command เก่า
     for cmd in await bot.tree.fetch_commands():
         if cmd.name != "gmb":
             await bot.tree.delete_command(cmd.name)
     await bot.tree.sync()
-    print(f"Bot ready as {bot.user} and commands synced!")
+    print(f"[INFO] Bot ready as {bot.user} and commands synced!")
 
     # เริ่ม task รีเซ็ตเช็คชื่อรายสัปดาห์
     bot.loop.create_task(reset_checked_in_users_weekly())
 
-# ================== KEEP ALIVE ==================
+# ================== RUN BOT ==================
 bot.run(TOKEN)
