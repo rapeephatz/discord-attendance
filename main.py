@@ -89,8 +89,8 @@ class CheckinView(discord.ui.View):
         await interaction.response.send_modal(CheckinModal())
 
 # ================== SLASH COMMAND ==================
-@bot.tree.command(name="attendance", description="ระบบเช็คชื่อ")
-async def attendance(interaction: discord.Interaction):
+@bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")  # ✅ เปลี่ยนเป็น /gmb
+async def gmb(interaction: discord.Interaction):
     await interaction.response.send_message(
         "📌 กดปุ่มด้านล่างเพื่อเช็คชื่อ",
         view=CheckinView()
@@ -103,5 +103,4 @@ async def on_ready():
     print(f"Bot ready as {bot.user}")
 
 # ================== KEEP ALIVE ==================
-# สำหรับ Render / Free Tier ไม่ต้องมี web server bot จะไม่ sleep
 bot.run(TOKEN)
