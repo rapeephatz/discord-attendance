@@ -264,9 +264,14 @@ async def gmb_list(interaction: discord.Interaction):
 # ================== READY ==================
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    guild = discord.Object(id=GUILD_ID)
+
+    bot.tree.copy_global_to(guild=guild)
+    await bot.tree.sync(guild=guild)
+
     bot.loop.create_task(reset_checked_in_users_weekly())
     print(f"[INFO] Bot ready as {bot.user}")
+
 # ==========================================
 
 bot.run(TOKEN)
