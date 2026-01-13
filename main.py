@@ -27,11 +27,11 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ================== GLOBAL STATES ==================
-checked_in_users = set()
-attendance_open = True  # ✅ สถานะเปิด/ปิดรับเช็คชื่อ
+checked_in_users: set[int] = set()
+attendance_open: bool = True
 
-# ================== FLASK (ใช้ได้/ไม่ใช้ก็ได้) ==================
-app = Flask("")
+# ================== FLASK (optional) ==================
+app = Flask(__name__)
 
 @app.route("/")
 def home():
@@ -45,7 +45,7 @@ threading.Thread(target=run_flask, daemon=True).start()
 # ================== RESET WEEKLY ==================
 async def reset_checked_in_users_weekly():
     await bot.wait_until_ready()
-    while True:
+    while not bot.is_closed():
         now = datetime.now()
         days_ahead = RESET_WEEKDAY - now.weekday()
         if days_ahead <= 0:
@@ -91,7 +91,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             return (
                 msg.author == interaction.user
                 and msg.channel == interaction.channel
-                and msg.attachments
+                and len(msg.attachments) > 0
             )
 
         try:
@@ -102,7 +102,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 
         log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
         if not log_channel:
-            await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
+            await interaction.followup.send("❌ ไม่พบห้องเก็บหลักฐาน", ephemeral=True)
             return
 
         embed = discord.Embed(
@@ -130,7 +130,7 @@ class CheckinView(discord.ui.View):
 
         if not attendance_open:
             await interaction.response.send_message(
-                "🔴 ขณะนี้ปิดรับการเช็คชื่อ กรุณารอแอดมินเปิดอีกครั้ง",
+                "🔴 ขณะนี้ปิดรับการเช็คชื่อ",
                 ephemeral=True
             )
             return
@@ -166,12 +166,15 @@ async def gmb_toggle(interaction: discord.Interaction):
     global attendance_open
     attendance_open = not attendance_open
 
-    status = "🟢 เปิดรับเช็คชื่อแล้ว" if attendance_open else "🔴 ปิดรับเช็คชื่อแล้ว"
-    await interaction.response.send_message(status, ephemeral=True)
+    await interaction.response.send_message(
+        "🟢 เปิดรับเช็คชื่อแล้ว" if attendance_open else "🔴 ปิดรับเช็คชื่อแล้ว",
+        ephemeral=True
+    )
 
 # ================== READY ==================
 @bot.event
 async def on_ready():
+    await bot.tree.clear_commands(guild=None)
     await bot.tree.sync()
     bot.loop.create_task(reset_checked_in_users_weekly())
     print(f"[INFO] Bot ready as {bot.user}")
