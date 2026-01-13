@@ -15,9 +15,10 @@ ATTENDANCE_LOG_CHANNEL_ID = 1459577266194612224
 
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]
+TOGGLE_ROLE_IDS = [1265593210399490058, 1452731313512779849, 1265593210269339787]
 
-RESET_WEEKDAY = 0  # Monday
-RESET_HOUR = 5     # 05:00
+RESET_WEEKDAY = 0
+RESET_HOUR = 5
 # ============================================
 
 if not TOKEN:
@@ -29,11 +30,15 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ================== KEEP TRACK ==================
+# ================== STATE ==================
 checked_in_users = set()
 
-# ================== FLASK KEEP ALIVE ==================
-app = Flask(__name__)
+# ✅ เพิ่มแค่นี้
+attendance_enabled = True
+# ==============================
+
+# ================== FLASK ==================
+app = Flask("")
 
 @app.route("/")
 def home():
@@ -42,9 +47,10 @@ def home():
 def run_flask():
     app.run(host="0.0.0.0", port=5000)
 
-threading.Thread(target=run_flask, daemon=True).start()
+threading.Thread(target=run_flask).start()
+# ===========================================
 
-# ================== RESET CHECK-IN WEEKLY ==================
+# ================== RESET WEEKLY ==================
 async def reset_checked_in_users_weekly():
     await bot.wait_until_ready()
     while True:
@@ -58,11 +64,12 @@ async def reset_checked_in_users_weekly():
         ) + timedelta(days=days_ahead)
 
         await asyncio.sleep((next_reset - now).total_seconds())
-        checked_in_users.clear()
 
+        checked_in_users.clear()
         log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
         if log_channel:
             await log_channel.send("🔔 เริ่มสัปดาห์ใหม่ สามารถเช็คชื่อได้อีกครั้ง!")
+# ================================================
 
 # ================== MODAL ==================
 class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
@@ -93,7 +100,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             return (
                 msg.author == interaction.user
                 and msg.channel == interaction.channel
-                and len(msg.attachments) > 0
+                and msg.attachments
             )
 
         try:
@@ -107,10 +114,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
             return
 
-        embed = discord.Embed(
-            title="📸 Attendance Check-in",
-            color=0x2ecc71
-        )
+        embed = discord.Embed(title="📸 Attendance Check-in", color=0x2ecc71)
         embed.add_field(name="👤 ผู้ใช้", value=interaction.user.mention, inline=False)
         embed.add_field(name="📅 วันที่", value=datetime.now().strftime("%Y-%m-%d"))
         embed.add_field(name="⏰ เวลา", value=datetime.now().strftime("%H:%M:%S"))
@@ -123,11 +127,20 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             checked_in_users.add(interaction.user.id)
 
         await interaction.followup.send("✅ เช็คชื่อสำเร็จแล้ว", ephemeral=True)
+# ==========================================
 
 # ================== VIEW ==================
 class CheckinView(discord.ui.View):
     @discord.ui.button(label="เช็คชื่อ", style=discord.ButtonStyle.success)
     async def checkin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ✅ เพิ่มเช็คเปิด/ปิด
+        if not attendance_enabled:
+            await interaction.response.send_message(
+                "⛔ ระบบเช็คชื่อถูกปิดอยู่",
+                ephemeral=True
+            )
+            return
+
         if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
             await interaction.response.send_message(
                 f"❌ ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}>",
@@ -137,16 +150,25 @@ class CheckinView(discord.ui.View):
 
         if REQUIRED_TEXT not in interaction.user.display_name:
             await interaction.response.send_message(
-                f"❌ กรุณาตั้งชื่อให้มี {REQUIRED_TEXT}",
+                f"❌ กรุณาตั้งชื่อให้มีคำว่า {REQUIRED_TEXT}",
                 ephemeral=True
             )
             return
 
         await interaction.response.send_modal(CheckinModal())
+# ==========================================
 
 # ================== SLASH COMMAND ==================
 @bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
 async def gmb(interaction: discord.Interaction):
+    # ✅ เพิ่มเช็คเปิด/ปิด
+    if not attendance_enabled:
+        await interaction.response.send_message(
+            "⛔ ระบบเช็คชื่อถูกปิดอยู่",
+            ephemeral=True
+        )
+        return
+
     if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
         await interaction.response.send_message(
             f"❌ ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}>",
@@ -159,12 +181,41 @@ async def gmb(interaction: discord.Interaction):
         view=CheckinView()
     )
 
+
+# ✅ คำสั่งเดียวที่เพิ่ม
+@bot.tree.command(
+    name="gmb_toggle",
+    description="เปิด/ปิดรับเช็คชื่อ",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def gmb_toggle(interaction: discord.Interaction):
+    global attendance_open
+
+    # เช็ค role
+    if not any(role.id in TOGGLE_ROLE_IDS for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            ephemeral=True
+        )
+        return
+
+    attendance_open = not attendance_open
+
+    await interaction.response.send_message(
+        "🟢 เปิดรับเช็คชื่อแล้ว"
+        if attendance_open
+        else "🔴 ปิดรับเช็คชื่อแล้ว",
+        ephemeral=True
+    )
+
+# ================================================
+
 # ================== READY ==================
 @bot.event
 async def on_ready():
     await bot.tree.sync()
     bot.loop.create_task(reset_checked_in_users_weekly())
-    print(f"[READY] Logged in as {bot.user}")
+    print(f"[INFO] Bot ready as {bot.user}")
+# ==========================================
 
-# ================== RUN ==================
 bot.run(TOKEN)
