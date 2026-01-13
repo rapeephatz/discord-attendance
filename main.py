@@ -90,9 +90,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     async def on_submit(self, interaction: discord.Interaction):
         today = datetime.now().date()
         week_number = get_week_number(today)
-        member_roles = [role.id for role in interaction.user.roles]
 
-        # ตรวจสอบถ้าเช็คซ้ำวันนี้
         last_date = checked_in_users.get(interaction.user.id, {}).get("last_date")
         if last_date == str(today) and not checkall_enabled:
             await interaction.response.send_message(
@@ -146,7 +144,6 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 
         await log_channel.send(embed=embed)
 
-        # บันทึกผู้ใช้
         if interaction.user.id in checked_in_users:
             checked_in_users[interaction.user.id]["count"] += 1
             checked_in_users[interaction.user.id]["last_date"] = str(today)
@@ -193,9 +190,7 @@ async def gmb(interaction: discord.Interaction):
         return
     await interaction.response.send_message("📌 กดปุ่มด้านล่างเพื่อเช็คชื่อ", view=CheckinView())
 
-# Toggle, list, reset เหมือนเดิม
-# ================== CHECKSUM / CHECKALL / CHECK ==================
-
+# ================== CHECKSUM / CHECKALL / CHECK / LIST ==================
 @bot.tree.command(name="gmb_checksum", description="ให้ผู้ใช้เช็คชื่อซ้ำ", guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(member="เลือกผู้ใช้ที่จะเช็คชื่อซ้ำ")
 async def gmb_checksum(interaction: discord.Interaction, member: discord.Member):
@@ -230,6 +225,22 @@ async def gmb_check(interaction: discord.Interaction, member: discord.Member = N
         return
     data = checked_in_users[member.id]
     await interaction.response.send_message(f"📌 {member.mention} เช็คชื่อไปแล้ว {data['count']} ครั้ง ล่าสุด: {data['last_date']}", ephemeral=True)
+
+@bot.tree.command(name="gmb_list", description="ดูรายชื่อคนที่เช็คชื่อแล้วตอนนี้", guild=discord.Object(id=GUILD_ID))
+async def gmb_list(interaction: discord.Interaction):
+    if not checked_in_users:
+        await interaction.response.send_message("📭 ตอนนี้ยังไม่มีใครเช็คชื่อ", ephemeral=True)
+        return
+
+    members_info = []
+    for user_id, data in checked_in_users.items():
+        member = interaction.guild.get_member(user_id)
+        if member:
+            members_info.append(f"{member.mention} — วันที่ล่าสุด: {data['last_date']} — เช็ค {data['count']} ครั้ง")
+
+    embed = discord.Embed(title="📋 รายชื่อผู้เช็คชื่อแล้ว", color=0x3498db)
+    embed.add_field(name=f"ทั้งหมด {len(members_info)} คน", value="\n".join(members_info), inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ================== READY ==================
 @bot.event
