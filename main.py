@@ -35,9 +35,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ================== STATE ==================
 checked_in_users = set()
 
-# ✅ เพิ่มแค่นี้
+# ✅ ใช้ตัวเดียวทั้งไฟล์
 attendance_enabled = True
-# ==============================
+# ==========================================
 
 # ================== FLASK ==================
 app = Flask("")
@@ -135,7 +135,6 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 class CheckinView(discord.ui.View):
     @discord.ui.button(label="เช็คชื่อ", style=discord.ButtonStyle.success)
     async def checkin(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ✅ เพิ่มเช็คเปิด/ปิด
         if not attendance_enabled:
             await interaction.response.send_message(
                 "⛔ ระบบเช็คชื่อถูกปิดอยู่",
@@ -163,7 +162,6 @@ class CheckinView(discord.ui.View):
 # ================== SLASH COMMAND ==================
 @bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
 async def gmb(interaction: discord.Interaction):
-    # ✅ เพิ่มเช็คเปิด/ปิด
     if not attendance_enabled:
         await interaction.response.send_message(
             "⛔ ระบบเช็คชื่อถูกปิดอยู่",
@@ -184,16 +182,14 @@ async def gmb(interaction: discord.Interaction):
     )
 
 
-# ✅ คำสั่งเดียวที่เพิ่ม
 @bot.tree.command(
     name="gmb_toggle",
     description="เปิด/ปิดรับเช็คชื่อ",
     guild=discord.Object(id=GUILD_ID)
 )
 async def gmb_toggle(interaction: discord.Interaction):
-    global attendance_open
+    global attendance_enabled
 
-    # เช็ค role
     if not any(role.id in TOGGLE_ROLE_IDS for role in interaction.user.roles):
         await interaction.response.send_message(
             "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
@@ -201,16 +197,14 @@ async def gmb_toggle(interaction: discord.Interaction):
         )
         return
 
-    attendance_open = not attendance_open
+    attendance_enabled = not attendance_enabled
 
     await interaction.response.send_message(
         "🟢 เปิดรับเช็คชื่อแล้ว"
-        if attendance_open
+        if attendance_enabled
         else "🔴 ปิดรับเช็คชื่อแล้ว",
         ephemeral=True
     )
-
-# ================================================
 
 # ================== READY ==================
 @bot.event
