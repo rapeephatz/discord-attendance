@@ -34,8 +34,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ================== STATE ==================
 checked_in_users = set()
-
-# ✅ ใช้ตัวเดียวทั้งไฟล์
 attendance_enabled = True
 # ==========================================
 
@@ -98,7 +96,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             ephemeral=True
         )
 
-        def check(msg: discord.Message):
+        def check_image(msg: discord.Message):
             return (
                 msg.author == interaction.user
                 and msg.channel == interaction.channel
@@ -106,9 +104,30 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             )
 
         try:
-            msg = await bot.wait_for("message", check=check, timeout=60)
+            image_msg = await bot.wait_for("message", check=check_image, timeout=60)
         except asyncio.TimeoutError:
             await interaction.followup.send("❌ หมดเวลา กรุณาลองใหม่", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            "👥 กรุณาแท็กเพื่อนที่เล่นด้วย (อย่างน้อย 1 คน) ภายใน 60 วินาที",
+            ephemeral=True
+        )
+
+        def check_tag(msg: discord.Message):
+            return (
+                msg.author == interaction.user
+                and msg.channel == interaction.channel
+                and msg.mentions
+            )
+
+        try:
+            tag_msg = await bot.wait_for("message", check=check_tag, timeout=60)
+        except asyncio.TimeoutError:
+            await interaction.followup.send(
+                "❌ ไม่พบการแท็กเพื่อน กรุณาเริ่มใหม่",
+                ephemeral=True
+            )
             return
 
         log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
@@ -116,12 +135,15 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
             return
 
+        tagged_users = ", ".join(user.mention for user in tag_msg.mentions)
+
         embed = discord.Embed(title="📸 Attendance Check-in", color=0x2ecc71)
         embed.add_field(name="👤 ผู้ใช้", value=interaction.user.mention, inline=False)
+        embed.add_field(name="👥 เล่นกับ", value=tagged_users, inline=False)
         embed.add_field(name="📅 วันที่", value=datetime.now().strftime("%Y-%m-%d"))
         embed.add_field(name="⏰ เวลา", value=datetime.now().strftime("%H:%M:%S"))
         embed.add_field(name="📝 หมายเหตุ", value=self.note.value or "-")
-        embed.set_image(url=msg.attachments[0].url)
+        embed.set_image(url=image_msg.attachments[0].url)
 
         await log_channel.send(embed=embed)
 
@@ -205,6 +227,39 @@ async def gmb_toggle(interaction: discord.Interaction):
         else "🔴 ปิดรับเช็คชื่อแล้ว",
         ephemeral=True
     )
+
+# ================== NEW COMMAND ==================
+@bot.tree.command(
+    name="gmb_list",
+    description="ดูรายชื่อคนที่เช็คชื่อแล้วตอนนี้",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def gmb_list(interaction: discord.Interaction):
+    if not checked_in_users:
+        await interaction.response.send_message(
+            "📭 ตอนนี้ยังไม่มีใครเช็คชื่อ",
+            ephemeral=True
+        )
+        return
+
+    members = []
+    for user_id in checked_in_users:
+        member = interaction.guild.get_member(user_id)
+        if member:
+            members.append(member.mention)
+
+    embed = discord.Embed(
+        title="📋 รายชื่อผู้เช็คชื่อแล้ว",
+        color=0x3498db
+    )
+    embed.add_field(
+        name=f"ทั้งหมด {len(members)} คน",
+        value="\n".join(members),
+        inline=False
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+# ==========================================
 
 # ================== READY ==================
 @bot.event
