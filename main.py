@@ -6,7 +6,7 @@ import asyncio
 import os
 
 # ================== CONFIG ==================
-TOKEN = os.getenv("DISCORD_TOKEN")  # ใช้ Render Environment Variable
+TOKEN = os.getenv("DISCORD_TOKEN")  # Render Environment Variable
 GUILD_ID = 1265593210269339782       # SERVER ID
 
 ATTENDANCE_CHANNEL_ID = 1458496060543733928
@@ -14,14 +14,8 @@ ATTENDANCE_LOG_CHANNEL_ID = 1459577266194612224
 
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 
-ALLOWED_ROLE_IDS = [
-    1265593210399490058,
-    1452731313512779849
-]  # role ที่เช็คซ้ำได้
-
-TOGGLE_ROLE_IDS = [
-    1265593210399490058
-]  # role ที่ใช้ /gmb_toggle ได้
+ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # เช็คซ้ำได้
+TOGGLE_ROLE_IDS = [1265593210399490058]  # role ที่ใช้ /gmb_toggle ได้
 
 RESET_WEEKDAY = 0  # Monday
 RESET_HOUR = 5     # 05:00
@@ -43,7 +37,6 @@ attendance_open = True
 # ================== RESET WEEKLY ==================
 async def reset_checked_in_users_weekly():
     await bot.wait_until_ready()
-
     while True:
         now = datetime.now()
         days = RESET_WEEKDAY - now.weekday()
@@ -51,19 +44,15 @@ async def reset_checked_in_users_weekly():
             days += 7
 
         reset_time = now.replace(
-            hour=RESET_HOUR,
-            minute=0,
-            second=0,
-            microsecond=0
+            hour=RESET_HOUR, minute=0, second=0, microsecond=0
         ) + timedelta(days=days)
 
         await asyncio.sleep((reset_time - now).total_seconds())
-
         checked_in_users.clear()
 
-        log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
-        if log_channel:
-            await log_channel.send("🔔 เริ่มสัปดาห์ใหม่ สามารถเช็คชื่อได้อีกครั้ง")
+        ch = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
+        if ch:
+            await ch.send("🔔 เริ่มสัปดาห์ใหม่ สามารถเช็คชื่อได้แล้ว")
 
 # ================== MODAL ==================
 class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
@@ -100,49 +89,26 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         try:
             msg = await bot.wait_for("message", timeout=60, check=check)
         except asyncio.TimeoutError:
-            await interaction.followup.send(
-                "❌ หมดเวลา กรุณาลองใหม่",
-                ephemeral=True
-            )
+            await interaction.followup.send("❌ หมดเวลา", ephemeral=True)
             return
 
         embed = discord.Embed(
             title="📸 Attendance Check-in",
             color=0x2ecc71
         )
-        embed.add_field(
-            name="👤 ผู้ใช้",
-            value=interaction.user.mention,
-            inline=False
-        )
-        embed.add_field(
-            name="📅 วันที่",
-            value=datetime.now().strftime("%Y-%m-%d"),
-            inline=True
-        )
-        embed.add_field(
-            name="⏰ เวลา",
-            value=datetime.now().strftime("%H:%M:%S"),
-            inline=True
-        )
-        embed.add_field(
-            name="📝 หมายเหตุ",
-            value=self.note.value or "-",
-            inline=False
-        )
+        embed.add_field(name="👤 ผู้ใช้", value=interaction.user.mention, inline=False)
+        embed.add_field(name="📅 วันที่", value=datetime.now().strftime("%Y-%m-%d"))
+        embed.add_field(name="⏰ เวลา", value=datetime.now().strftime("%H:%M:%S"))
+        embed.add_field(name="📝 หมายเหตุ", value=self.note.value or "-")
         embed.set_image(url=msg.attachments[0].url)
 
-        log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
-        if log_channel:
-            await log_channel.send(embed=embed)
+        log = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
+        await log.send(embed=embed)
 
         if not allowed:
             checked_in_users.add(interaction.user.id)
 
-        await interaction.followup.send(
-            "✅ เช็คชื่อสำเร็จ",
-            ephemeral=True
-        )
+        await interaction.followup.send("✅ เช็คชื่อสำเร็จ", ephemeral=True)
 
 # ================== VIEW ==================
 class CheckinView(discord.ui.View):
@@ -152,7 +118,7 @@ class CheckinView(discord.ui.View):
 
         if not attendance_open:
             await interaction.response.send_message(
-                "🔴 ขณะนี้ปิดรับเช็คชื่อ",
+                "🔴 ปิดรับเช็คชื่ออยู่",
                 ephemeral=True
             )
             return
@@ -181,7 +147,7 @@ class CheckinView(discord.ui.View):
 )
 async def gmb(interaction: discord.Interaction):
     await interaction.response.send_message(
-        "📌 กดปุ่มด้านล่างเพื่อเช็คชื่อ",
+        "📌 กดปุ่มเพื่อเช็คชื่อ",
         view=CheckinView()
     )
 
@@ -195,25 +161,33 @@ async def gmb_toggle(interaction: discord.Interaction):
 
     if not any(r.id in TOGGLE_ROLE_IDS for r in interaction.user.roles):
         await interaction.response.send_message(
-            "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            "❌ คุณไม่มีสิทธิ์",
             ephemeral=True
         )
         return
 
     attendance_open = not attendance_open
-
     await interaction.response.send_message(
-        "🟢 เปิดรับเช็คชื่อแล้ว"
-        if attendance_open
-        else "🔴 ปิดรับเช็คชื่อแล้ว"
+        "🟢 เปิดรับแล้ว" if attendance_open else "🔴 ปิดรับแล้ว",
+        ephemeral=True
     )
 
 # ================== READY ==================
 @bot.event
 async def on_ready():
-    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+    guild = discord.Object(id=GUILD_ID)
+
+    # 🔥 ล้าง command เก่าที่ค้างทั้งหมด
+    await bot.tree.clear_commands(guild=guild)
+    await bot.tree.sync(guild=guild)
+
+    # 🔥 sync ใหม่แบบบังคับ
+    await bot.tree.sync(guild=guild)
+
     bot.loop.create_task(reset_checked_in_users_weekly())
+
     print(f"[READY] Logged in as {bot.user}")
+    print("✅ Slash commands cleared & re-synced")
 
 # ================== RUN ==================
 bot.run(TOKEN)
