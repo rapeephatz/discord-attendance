@@ -1,24 +1,23 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 from datetime import datetime, timedelta
 import asyncio
 import os
 
 # ================== CONFIG ==================
-TOKEN = os.getenv("DISCORD_TOKEN")  # Render Environment Variable
-GUILD_ID = 1265593210269339782       # SERVER ID
+TOKEN = os.getenv("DISCORD_TOKEN")
+GUILD_ID = 1265593210269339782
 
 ATTENDANCE_CHANNEL_ID = 1458496060543733928
 ATTENDANCE_LOG_CHANNEL_ID = 1459577266194612224
 
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 
-ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]  # เช็คซ้ำได้
-TOGGLE_ROLE_IDS = [1265593210399490058]  # role ที่ใช้ /gmb_toggle ได้
+ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]
+TOGGLE_ROLE_IDS = [1265593210399490058]
 
-RESET_WEEKDAY = 0  # Monday
-RESET_HOUR = 5     # 05:00
+RESET_WEEKDAY = 0
+RESET_HOUR = 5
 # ============================================
 
 if not TOKEN:
@@ -30,7 +29,6 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ================== GLOBAL STATE ==================
 checked_in_users = set()
 attendance_open = True
 
@@ -52,13 +50,13 @@ async def reset_checked_in_users_weekly():
 
         ch = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
         if ch:
-            await ch.send("🔔 เริ่มสัปดาห์ใหม่ สามารถเช็คชื่อได้แล้ว")
+            await ch.send("🔔 เริ่มสัปดาห์ใหม่ เช็คชื่อได้แล้ว")
 
 # ================== MODAL ==================
 class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     note = discord.ui.TextInput(
         label="หมายเหตุ",
-        placeholder="ชื่อในเกม / ใช้ยืนยันตัวตน",
+        placeholder="ชื่อในเกม",
         required=False,
         max_length=100
     )
@@ -141,11 +139,11 @@ class CheckinView(discord.ui.View):
 
 # ================== SLASH COMMANDS ==================
 @bot.tree.command(
-    name="gmb",
+    name="gmb_checkin",
     description="ระบบเช็คชื่อ",
     guild=discord.Object(id=GUILD_ID)
 )
-async def gmb(interaction: discord.Interaction):
+async def gmb_checkin(interaction: discord.Interaction):
     await interaction.response.send_message(
         "📌 กดปุ่มเพื่อเช็คชื่อ",
         view=CheckinView()
@@ -176,14 +174,9 @@ async def gmb_toggle(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     guild = discord.Object(id=GUILD_ID)
-
-    # sync guild command ครั้งเดียว
     await bot.tree.sync(guild=guild)
-
     bot.loop.create_task(reset_checked_in_users_weekly())
-
     print(f"[READY] Logged in as {bot.user}")
-    print("✅ Guild slash commands synced")
 
 # ================== RUN ==================
 bot.run(TOKEN)
