@@ -33,9 +33,9 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ================== STATE ==================
-# เปลี่ยนเป็น dict เก็บ last_date, week_number, count
 checked_in_users = {}  # {user_id: {"last_date": "YYYY-MM-DD", "week_number": int, "count": int}}
 attendance_enabled = True
+checkall_enabled = False  # ใช้สำหรับ /gmb_checkall
 # ==========================================
 
 # ================== FLASK ==================
@@ -53,7 +53,7 @@ threading.Thread(target=run_flask).start()
 
 # ================== HELPER ==================
 def get_week_number(dt: date):
-    return dt.isocalendar()[1]  # เลขสัปดาห์ของปี
+    return dt.isocalendar()[1]
 # ===========================================
 
 # ================== RESET WEEKLY ==================
@@ -94,7 +94,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
 
         # กันคนเช็คซ้ำรายสัปดาห์
         if interaction.user.id in checked_in_users:
-            if checked_in_users[interaction.user.id].get("week_number") == week_number:
+            if not checkall_enabled and checked_in_users[interaction.user.id].get("week_number") == week_number:
                 await interaction.response.send_message(
                     "❌ คุณได้เช็คชื่อแล้วในสัปดาห์นี้",
                     ephemeral=True
@@ -198,12 +198,13 @@ class CheckinView(discord.ui.View):
 
         today = datetime.now().date()
         week_number = get_week_number(today)
-        if interaction.user.id in checked_in_users and checked_in_users[interaction.user.id].get("week_number") == week_number:
-            await interaction.response.send_message(
-                "❌ คุณได้เช็คชื่อแล้วในสัปดาห์นี้",
-                ephemeral=True
-            )
-            return
+        if interaction.user.id in checked_in_users and not checkall_enabled:
+            if checked_in_users[interaction.user.id].get("week_number") == week_number:
+                await interaction.response.send_message(
+                    "❌ คุณได้เช็คชื่อแล้วในสัปดาห์นี้",
+                    ephemeral=True
+                )
+                return
 
         await interaction.response.send_modal(CheckinModal())
 
@@ -311,6 +312,81 @@ async def gmb_reset(interaction: discord.Interaction, member: discord.Member):
             f"ℹ️ {member.mention} ยังไม่ได้เช็คชื่อ",
             ephemeral=True
         )
+
+# ================== NEW COMMANDS ==================
+@bot.tree.command(
+    name="gmb_checksum",
+    description="ให้ผู้ใช้เช็คชื่อซ้ำ",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.describe(member="เลือกผู้ใช้ที่จะเช็คชื่อซ้ำ")
+async def gmb_checksum(interaction: discord.Interaction, member: discord.Member):
+    if not any(role.id in TOGGLE_ROLE_IDS for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            ephemeral=True
+        )
+        return
+
+    today = datetime.now().date()
+    week_number = get_week_number(today)
+
+    # เพิ่ม count โดยไม่ตรวจซ้ำ
+    if member.id in checked_in_users:
+        checked_in_users[member.id]["count"] += 1
+        checked_in_users[member.id]["last_date"] = str(today)
+        checked_in_users[member.id]["week_number"] = week_number
+    else:
+        checked_in_users[member.id] = {
+            "count": 1,
+            "last_date": str(today),
+            "week_number": week_number
+        }
+
+    await interaction.response.send_message(
+        f"✅ {member.mention} สามารถเช็คชื่อซ้ำได้แล้ว",
+        ephemeral=True
+    )
+
+@bot.tree.command(
+    name="gmb_checkall",
+    description="เปิดให้ผู้ใช้เช็คชื่อซ้ำทุกคน",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def gmb_checkall(interaction: discord.Interaction):
+    global checkall_enabled
+    if not any(role.id in TOGGLE_ROLE_IDS for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            ephemeral=True
+        )
+        return
+
+    checkall_enabled = True
+    await interaction.response.send_message(
+        "✅ เปิดให้ผู้ใช้ที่มี role เช็คชื่อซ้ำได้แล้ว",
+        ephemeral=True
+    )
+
+@bot.tree.command(
+    name="gmb_check",
+    description="ดูจำนวนครั้งที่ผู้ใช้เช็คชื่อ",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.describe(member="เลือกผู้ใช้เพื่อตรวจสอบ")
+async def gmb_check(interaction: discord.Interaction, member: discord.Member):
+    if member.id not in checked_in_users:
+        await interaction.response.send_message(
+            f"ℹ️ {member.mention} ยังไม่ได้เช็คชื่อ",
+            ephemeral=True
+        )
+        return
+
+    data = checked_in_users[member.id]
+    await interaction.response.send_message(
+        f"📌 {member.mention} เช็คชื่อไปแล้ว {data['count']} ครั้ง ล่าสุด: {data['last_date']}",
+        ephemeral=True
+    )
 
 # ================== READY ==================
 @bot.event
