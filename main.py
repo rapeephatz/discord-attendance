@@ -177,17 +177,13 @@ async def gmb_toggle(interaction: discord.Interaction):
 async def on_ready():
     guild = discord.Object(id=GUILD_ID)
 
-    # 🔥 ล้าง command เก่าที่ค้างทั้งหมด
-    await bot.tree.clear_commands(guild=guild)
-    await bot.tree.sync(guild=guild)
-
-    # 🔥 sync ใหม่แบบบังคับ
+    # sync guild command ครั้งเดียว
     await bot.tree.sync(guild=guild)
 
     bot.loop.create_task(reset_checked_in_users_weekly())
 
     print(f"[READY] Logged in as {bot.user}")
-    print("✅ Slash commands cleared & re-synced")
+    print("✅ Guild slash commands synced")
 
 # ================== RUN ==================
 bot.run(TOKEN)
