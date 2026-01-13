@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import asyncio
 import os
 import threading
@@ -33,7 +33,8 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ================== STATE ==================
-checked_in_users = {}  # {user_id: {"last_date": "YYYY-MM-DD", "count": int}}
+# เปลี่ยนเป็น dict เก็บ last_date, week_number, count
+checked_in_users = {}  # {user_id: {"last_date": "YYYY-MM-DD", "week_number": int, "count": int}}
 attendance_enabled = True
 # ==========================================
 
@@ -48,6 +49,11 @@ def run_flask():
     app.run(host="0.0.0.0", port=5000)
 
 threading.Thread(target=run_flask).start()
+# ===========================================
+
+# ================== HELPER ==================
+def get_week_number(dt: date):
+    return dt.isocalendar()[1]  # เลขสัปดาห์ของปี
 # ===========================================
 
 # ================== RESET WEEKLY ==================
@@ -81,17 +87,19 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now().date()
+        week_number = get_week_number(today)
         member_roles = [role.id for role in interaction.user.roles]
         allowed = any(role_id in ALLOWED_ROLE_IDS for role_id in member_roles)
 
-        # กันคนเช็คซ้ำ
-        if interaction.user.id in checked_in_users and checked_in_users[interaction.user.id]["last_date"] == today_str:
-            await interaction.response.send_message(
-                "❌ คุณได้เช็คชื่อแล้ววันนี้",
-                ephemeral=True
-            )
-            return
+        # กันคนเช็คซ้ำรายสัปดาห์
+        if interaction.user.id in checked_in_users:
+            if checked_in_users[interaction.user.id].get("week_number") == week_number:
+                await interaction.response.send_message(
+                    "❌ คุณได้เช็คชื่อแล้วในสัปดาห์นี้",
+                    ephemeral=True
+                )
+                return
 
         await interaction.response.send_message(
             "📸 กรุณาส่งรูปเล่นกับคนในกิลเพื่อยืนยันภายใน 60 วินาที",
@@ -142,18 +150,179 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         embed = discord.Embed(title="📸 Attendance Check-in", color=0x2ecc71)
         embed.add_field(name="👤 ผู้ใช้", value=interaction.user.mention, inline=False)
         embed.add_field(name="👥 เล่นกับ", value=tagged_users, inline=False)
-        embed.add_field(name="📅 วันที่", value=today_str)
+        embed.add_field(name="📅 วันที่", value=str(today))
         embed.add_field(name="⏰ เวลา", value=datetime.now().strftime("%H:%M:%S"))
         embed.add_field(name="📝 หมายเหตุ", value=self.note.value or "-")
         embed.set_image(url=image_msg.attachments[0].url)
 
         await log_channel.send(embed=embed)
 
-        # บันทึกผู้ใช้ลง checked_in_users
+        # บันทึกผู้ใช้
         if interaction.user.id in checked_in_users:
-            checked_in_users[interaction.user.id]["last_date"] = today_str
             checked_in_users[interaction.user.id]["count"] += 1
+            checked_in_users[interaction.user.id]["week_number"] = week_number
+            checked_in_users[interaction.user.id]["last_date"] = str(today)
         else:
-            checked_in_users[interaction.user.id] = {"last_date": today_str, "count": 1}
+            checked_in_users[interaction.user.id] = {
+                "count": 1,
+                "week_number": week_number,
+                "last_date": str(today)
+            }
 
-        await inte
+        await interaction.followup.send("✅ เช็คชื่อสำเร็จแล้ว", ephemeral=True)
+
+# ================== VIEW ==================
+class CheckinView(discord.ui.View):
+    @discord.ui.button(label="เช็คชื่อ", style=discord.ButtonStyle.success)
+    async def checkin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not attendance_enabled:
+            await interaction.response.send_message(
+                "⛔ ระบบเช็คชื่อถูกปิดอยู่",
+                ephemeral=True
+            )
+            return
+
+        if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
+            await interaction.response.send_message(
+                f"❌ ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}>",
+                ephemeral=True
+            )
+            return
+
+        if REQUIRED_TEXT not in interaction.user.display_name:
+            await interaction.response.send_message(
+                f"❌ กรุณาตั้งชื่อให้มีคำว่า {REQUIRED_TEXT}",
+                ephemeral=True
+            )
+            return
+
+        today = datetime.now().date()
+        week_number = get_week_number(today)
+        if interaction.user.id in checked_in_users and checked_in_users[interaction.user.id].get("week_number") == week_number:
+            await interaction.response.send_message(
+                "❌ คุณได้เช็คชื่อแล้วในสัปดาห์นี้",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_modal(CheckinModal())
+
+# ================== SLASH COMMANDS ==================
+@bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
+async def gmb(interaction: discord.Interaction):
+    if not attendance_enabled:
+        await interaction.response.send_message(
+            "⛔ ระบบเช็คชื่อถูกปิดอยู่",
+            ephemeral=True
+        )
+        return
+
+    if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
+        await interaction.response.send_message(
+            f"❌ ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}>",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        "📌 กดปุ่มด้านล่างเพื่อเช็คชื่อ",
+        view=CheckinView()
+    )
+
+@bot.tree.command(
+    name="gmb_toggle",
+    description="เปิด/ปิดรับเช็คชื่อ",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def gmb_toggle(interaction: discord.Interaction):
+    global attendance_enabled
+
+    if not any(role.id in TOGGLE_ROLE_IDS for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            ephemeral=True
+        )
+        return
+
+    attendance_enabled = not attendance_enabled
+
+    await interaction.response.send_message(
+        "🟢 เปิดรับเช็คชื่อแล้ว"
+        if attendance_enabled
+        else "🔴 ปิดรับเช็คชื่อแล้ว",
+        ephemeral=True
+    )
+
+@bot.tree.command(
+    name="gmb_list",
+    description="ดูรายชื่อคนที่เช็คชื่อแล้วตอนนี้",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def gmb_list(interaction: discord.Interaction):
+    if not checked_in_users:
+        await interaction.response.send_message(
+            "📭 ตอนนี้ยังไม่มีใครเช็คชื่อ",
+            ephemeral=True
+        )
+        return
+
+    members_info = []
+    for user_id, data in checked_in_users.items():
+        member = interaction.guild.get_member(user_id)
+        if member:
+            members_info.append(
+                f"{member.mention} — วันที่ล่าสุด: {data['last_date']} — เช็ค {data['count']} ครั้ง"
+            )
+
+    embed = discord.Embed(
+        title="📋 รายชื่อผู้เช็คชื่อแล้ว",
+        color=0x3498db
+    )
+    embed.add_field(
+        name=f"ทั้งหมด {len(members_info)} คน",
+        value="\n".join(members_info),
+        inline=False
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(
+    name="gmb_reset",
+    description="รีเซ็ตการเช็คชื่อของผู้ใช้",
+    guild=discord.Object(id=GUILD_ID)
+)
+@app_commands.describe(member="เลือกผู้ใช้ที่จะรีเซ็ต")
+async def gmb_reset(interaction: discord.Interaction, member: discord.Member):
+    if not any(role.id in TOGGLE_ROLE_IDS for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            ephemeral=True
+        )
+        return
+
+    if member.id in checked_in_users:
+        del checked_in_users[member.id]
+        await interaction.response.send_message(
+            f"✅ รีเซ็ตการเช็คชื่อของ {member.mention} เรียบร้อยแล้ว",
+            ephemeral=True
+        )
+    else:
+        await interaction.response.send_message(
+            f"ℹ️ {member.mention} ยังไม่ได้เช็คชื่อ",
+            ephemeral=True
+        )
+
+# ================== READY ==================
+@bot.event
+async def on_ready():
+    guild = discord.Object(id=GUILD_ID)
+
+    bot.tree.copy_global_to(guild=guild)
+    await bot.tree.sync(guild=guild)
+
+    bot.loop.create_task(reset_checked_in_users_weekly())
+    print(f"[INFO] Bot ready as {bot.user}")
+
+# ==========================================
+
+bot.run(TOKEN)
