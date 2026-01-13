@@ -9,12 +9,15 @@ from flask import Flask
 
 # ================== CONFIG ==================
 TOKEN = os.getenv("DISCORD_TOKEN")
+
 ATTENDANCE_CHANNEL_ID = 1458496060543733928
 ATTENDANCE_LOG_CHANNEL_ID = 1459577266194612224
+
 REQUIRED_TEXT = "˚₊‧ ɢᴍʙ ‧₊˚"
 ALLOWED_ROLE_IDS = [1265593210399490058, 1452731313512779849]
-RESET_WEEKDAY = 0
-RESET_HOUR = 5
+
+RESET_WEEKDAY = 0  # Monday
+RESET_HOUR = 5     # 05:00
 # ============================================
 
 if not TOKEN:
@@ -41,7 +44,7 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-# ================== RESET WEEKLY ==================
+# ================== RESET CHECK-IN WEEKLY ==================
 async def reset_checked_in_users_weekly():
     await bot.wait_until_ready()
     while True:
@@ -71,8 +74,8 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        roles = [r.id for r in interaction.user.roles]
-        allowed = any(r in ALLOWED_ROLE_IDS for r in roles)
+        member_roles = [role.id for role in interaction.user.roles]
+        allowed = any(role_id in ALLOWED_ROLE_IDS for role_id in member_roles)
 
         if not allowed and interaction.user.id in checked_in_users:
             await interaction.response.send_message(
@@ -82,7 +85,7 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             return
 
         await interaction.response.send_message(
-            "📸 กรุณาส่งรูปภายใน 60 วินาที",
+            "📸 กรุณาส่งรูปเล่นกับคนในกิลเพื่อยืนยันภายใน 60 วินาที",
             ephemeral=True
         )
 
@@ -90,13 +93,18 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
             return (
                 msg.author == interaction.user
                 and msg.channel == interaction.channel
-                and msg.attachments
+                and len(msg.attachments) > 0
             )
 
         try:
-            msg = await bot.wait_for("message", timeout=60, check=check)
+            msg = await bot.wait_for("message", check=check, timeout=60)
         except asyncio.TimeoutError:
-            await interaction.followup.send("❌ หมดเวลา", ephemeral=True)
+            await interaction.followup.send("❌ หมดเวลา กรุณาลองใหม่", ephemeral=True)
+            return
+
+        log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
+        if not log_channel:
+            await interaction.followup.send("❌ ไม่พบห้องเก็บข้อมูล", ephemeral=True)
             return
 
         embed = discord.Embed(
@@ -109,7 +117,6 @@ class CheckinModal(discord.ui.Modal, title="เช็คชื่อ"):
         embed.add_field(name="📝 หมายเหตุ", value=self.note.value or "-")
         embed.set_image(url=msg.attachments[0].url)
 
-        log_channel = bot.get_channel(ATTENDANCE_LOG_CHANNEL_ID)
         await log_channel.send(embed=embed)
 
         if not allowed:
@@ -130,7 +137,7 @@ class CheckinView(discord.ui.View):
 
         if REQUIRED_TEXT not in interaction.user.display_name:
             await interaction.response.send_message(
-                f"❌ ต้องมี `{REQUIRED_TEXT}` ในชื่อ",
+                f"❌ กรุณาตั้งชื่อให้มี {REQUIRED_TEXT}",
                 ephemeral=True
             )
             return
@@ -140,6 +147,13 @@ class CheckinView(discord.ui.View):
 # ================== SLASH COMMAND ==================
 @bot.tree.command(name="gmb", description="ระบบเช็คชื่อ")
 async def gmb(interaction: discord.Interaction):
+    if interaction.channel.id != ATTENDANCE_CHANNEL_ID:
+        await interaction.response.send_message(
+            f"❌ ใช้ได้เฉพาะห้อง <#{ATTENDANCE_CHANNEL_ID}>",
+            ephemeral=True
+        )
+        return
+
     await interaction.response.send_message(
         "📌 กดปุ่มด้านล่างเพื่อเช็คชื่อ",
         view=CheckinView()
